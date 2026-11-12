@@ -308,6 +308,20 @@ func writeLogins(ls []savedLogin) error {
 	if err != nil {
 		return err
 	}
+	b = append(b, '\n')
+	// a file already holding these bytes is left alone: writing it moves
+	// its time on, writePrivate forgets what filememo parsed, and every
+	// read after parses the accounts again — 230 KB of them, 182 times in
+	// 15 seconds after one such write that changed nothing (strace). What
+	// it would have dropped is dropped without the file: a write lists
+	// anew, and these bytes are what the memo has.
+	if cur, err := os.ReadFile(loginsPath()); err == nil && bytes.Equal(cur, b) {
+		lastLoginsMu.Lock()
+		lastLogins, loginsKnown = slices.Clone(ls), true
+		lastLoginsMu.Unlock()
+		dropHeld()
+		return nil
+	}
 	defer Changed() // an account added, switched or gone: All builds anew
 	beforeLoginsWrite()
 	// the file there now is kept first: as its last good generation, or
@@ -315,7 +329,7 @@ func writeLogins(ls []savedLogin) error {
 	if err := lastgood.Keep(loginsPath(), validLogins, 0o600); err != nil {
 		return err
 	}
-	if err := writePrivate(loginsPath(), append(b, '\n')); err != nil {
+	if err := writePrivate(loginsPath(), b); err != nil {
 		return err
 	}
 	lastLoginsMu.Lock()
