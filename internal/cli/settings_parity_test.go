@@ -229,6 +229,7 @@ var cliForRoute = map[string]string{
 	"GET /api/update":                      "magpie update check",
 	"POST /api/update/check":               "magpie update check",
 	"POST /api/settings/agent-compact":     "magpie model compact",
+	"POST /api/settings/agent-contexts":    "magpie model window",
 	"POST /api/settings/agent-suffix":      "magpie model suffix",
 	"POST /api/settings/context-cap":       "magpie model context-cap",
 	"POST /api/settings/context-cap-mode":  "magpie model context-cap",
@@ -246,6 +247,7 @@ var notYet = map[string]string{
 	"GET /api/cli":                               A,  // api.go
 	"GET /api/drift":                             A,  // api.go
 	"GET /api/notices":                           W,  // api.go
+	"GET /api/feedback":                          W,  // feedback.go: Settings › About's Report a problem, which opens a page
 	"GET /api/omarchy":                           W,  // api.go
 	"GET /api/quit":                              W,  // api.go: the window's Quit question
 	"GET /api/remote":                            W,  // remote.go: another magpie opened in a window of the app

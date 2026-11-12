@@ -1233,6 +1233,7 @@ func provider(all map[string]mdProvider, id string) []Model {
 			InputModalities: m.Modalities.Input, OutputModalities: m.Modalities.Output}
 		mm.Efforts = p.levels(m, id)
 		mm.Reasoning = m.Thinks || len(mm.Efforts) > 0
+		mistralSeesImages(&mm)
 		out = append(out, mm)
 	}
 	sort.SliceStable(out, func(i, j int) bool {
@@ -1242,6 +1243,22 @@ func provider(all map[string]mdProvider, id string) []Model {
 		return out[i].ID < out[j].ID
 	})
 	return out
+}
+
+// mistralSeesImages is Mistral's own word over models.dev's for its
+// DeepSeek V4.1 Flash (deepseek-v4-1-flash-1017): models.dev lists it
+// text-only, Mistral's models page says "text and image inputs" (regain4125
+// on X: images off by default). Only that model on Mistral's own entry;
+// the same model at another vendor keeps that vendor's row.
+func mistralSeesImages(m *Model) {
+	if m.Provider != "mistral" || !strings.HasPrefix(m.ID, "deepseek-v4-1-flash") {
+		return
+	}
+	yes := true
+	m.Images, m.ImageInput = true, &yes
+	if m.InputModalities != nil && !slices.Contains(m.InputModalities, "image") {
+		m.InputModalities = append(slices.Clone(m.InputModalities), "image")
+	}
 }
 
 // ProviderName is a models.dev provider's display name ("GitHub Copilot"
@@ -1752,6 +1769,62 @@ func unmarked(b string) (string, int) {
 	return b[:i], int(n * float64(unit))
 }
 
+// NameWindow is the context window a model's name says it has, for a local
+// or custom model nothing else says a window of (maohy915 on X: a
+// "Qwen-3.8-27b-128k" he made himself): a last part of the id that is a
+// number and a unit alone, set apart by "-", "_" or " " from what comes
+// before it (or the last of an Ollama tag, "qwen:27b-128k"). k is 4 to 2048 thousand, m is 1, 2, 4, 5, 8 or 10 million, read
+// as the same 1,000 and 1,000,000 a "[200k]" mark is (a name that rounds up
+// never promises more than the model takes). Anything else is no window: a
+// model's size (27b, pythia-14m, smollm-135m), its version, a date
+// (gpt-4o-2024), a quant (q4_k_m), a lone "128k" with nothing before it.
+// It is the last resort: the user's own, the server's and models.dev's
+// windows are read before it.
+func NameWindow(id string) int {
+	id = strings.ToLower(strings.TrimSpace(id))
+	if i := strings.LastIndexByte(id, '/'); i >= 0 {
+		id = id[i+1:]
+	}
+	// Ollama's "name:tag": the window is in the tag's last part
+	// ("qwen:27b-128k"), or in the name's when the tag is latest or only a
+	// size ("qwen3-128k:latest", "qwen3-128k:8b")
+	if name, tag, ok := strings.Cut(id, ":"); ok {
+		if n := nameWindow(tag); n > 0 {
+			return n
+		}
+		if tag == "latest" || strings.HasSuffix(tag, "b") && strings.Trim(tag[:len(tag)-1], "0123456789.") == "" {
+			return nameWindow(name)
+		}
+		return 0
+	}
+	return nameWindow(id)
+}
+
+// nameWindow is NameWindow of an id with no tag.
+func nameWindow(id string) int {
+	i := strings.LastIndexAny(id, "-_ ")
+	if i <= 0 || i+1 >= len(id) {
+		return 0
+	}
+	tail := id[i+1:]
+	unit := tail[len(tail)-1]
+	if unit != 'k' && unit != 'm' {
+		return 0
+	}
+	num := tail[:len(tail)-1]
+	if num == "" || len(num) > 4 || num[0] == '0' || strings.Trim(num, "0123456789") != "" {
+		return 0
+	}
+	n, _ := strconv.Atoi(num)
+	switch {
+	case unit == 'k' && n >= 4 && n <= 2048:
+		return n * 1_000
+	case unit == 'm' && (n == 1 || n == 2 || n == 4 || n == 5 || n == 8 || n == 10):
+		return n * 1_000_000
+	}
+	return 0
+}
+
 // ListedBy is the reasoning levels the first of providers (models.dev
 // ids) listing a model of this id gives it — none, for one listed with a
 // thinking switch alone or nothing at all — and whether any of them says.
@@ -2108,7 +2181,7 @@ func DrawsID(id string) bool {
 // generators (Hy-Image-3.5-preview) draw on its images API too (#4913).
 func ImagesAPI(id string) bool {
 	id = strings.ToLower(id)
-	for _, w := range []string{"gpt-image", "chatgpt-image", "dall-e", "imagen", "imagine", "qwen-image", "wanx", "wan2", "seedream", "cogview", "flux", "stable-diffusion", "sdxl", "kolors", "hidream", "sensenova-u1", "hy-image"} {
+	for _, w := range []string{"gpt-image", "chatgpt-image", "dall-e", "imagen", "imagine", "qwen-image", "wanx", "wan2", "seedream", "cogview", "flux", "stable-diffusion", "sdxl", "kolors", "hidream", "sensenova-u1", "hy-image", "h3-image"} {
 		if strings.Contains(id, w) {
 			return true
 		}
